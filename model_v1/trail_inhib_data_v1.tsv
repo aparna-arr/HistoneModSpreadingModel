@@ -1,0 +1,17 @@
+drug	conc	tot_count	live_perc	control_count	control_perc	rep
+HU	0.01	1.05e5	.95	4.29e5	1	1
+HU	0.5	1.6e5	1	4.63e5	1	1
+HU	1	2.15e5	1	2.53e5	1	1
+HU	2	1.21e5	1	2.53e5	1	1
+Mim	0.1	6.60e4	1	4.29e5	1	1
+Mim	0.2	1.10e5	1	4.63e5	1	1
+Mim	0.3	3.80e5	1	4.18e5	.97	1
+Mim	0.4	2.37e5	1	2.53e5	1	1
+Noco	0.005	2.20e5	1	4.29e5	1	1
+Noco	0.007	1.77e5	.96	4.63e5	1	1
+Noco	0.01	2.15e5	.97	4.18e5	.97	1
+Noco	0.015	3.19e5	1	4.18e5	.97	1
+Control	0	4.29e5	1	4.29e5	1	1
+Control	1	4.63e5	1	4.63e5	1	1
+Control	5	4.18e5	.97	4.18e5	.97	1
+Control	10	2.53e5	1	2.53e5	1	1
