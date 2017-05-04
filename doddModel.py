@@ -3,13 +3,17 @@ import random
 import math
 import operator
 
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
 ## CONSTANTS ##
-#N_NUCLEOSOMES = 60
-#TOT_EVENTS = 10000
 SEED = 1
-#A = 2/3 # strong bistability
 MEAN_TIME = 5
 random.seed(SEED)
+
+GRAY = (0.662745,0.662745,0.662745)
+RED = (0.545098,0,0)
+BLUE = (0,0,0.545098)
 ##
 
 ## FUNCTIONS ##
@@ -66,12 +70,53 @@ class Chromatin:
             'A':0,
             'U':self.N_NUCLEOSOMES
                 }
+
+        self.colors = [GRAY] * self.N_NUCLEOSOMES
+        self.updated = []
+
+
+    def animate_nucs(self):
+        fig = plt.figure()
+        ax = fig.add_axes([0.1,0.1,0.9,0.9])
+
+        cols = math.ceil(math.sqrt(self.N_NUCLEOSOMES))
+        rows = math.ceil(self.N_NUCLEOSOMES/cols)
+
+        x_int = 1/cols
+        y_int = 1/rows
+
+        x_vals = []
+        y_vals = []
+
+        for i in range(cols):
+            for j in range(rows):
+                x_vals.append(i*x_int)
+                y_vals.append(j*y_int)
+
+        p = ax.scatter(x_vals, y_vals, facecolors = self.colors)
+
+        def update_animation(i):
+            self.run_event()
+
+            if i % int(self.TOT_EVENTS/5) == 0:
+                self.divide()
+
+            p.set_facecolors(self.colors)
+            
+
+        an = animation.FuncAnimation(fig,update_animation,frames=self.TOT_EVENTS,interval=10,repeat=False)
+
+        plt.show()
+
     def divide(self):
         for i in range(self.N_NUCLEOSOMES):
             if random.random() <= 0.5:
                 prev = self.nucleosomes[i].state
                 self.nucleosomes[i].state = 0
                 self.update(prev,0)
+
+                self.updated.append(i)
+                self.colors[i] = GRAY
 
 
     def print_nucleosomes(self):
@@ -101,6 +146,8 @@ class Chromatin:
             if event_count % int(self.TOT_EVENTS/5) == 0:
                 self.divide()
                 divisions.append(str(event_count))
+
+            self.update_animation()
 
             event_count += 1
 
@@ -144,8 +191,17 @@ class Chromatin:
         self.nucleosomes[curr_nucleosome].change_state(state)
         new_state = self.nucleosomes[curr_nucleosome].state
 
+            
 
 #        print("old state:",old_state,"new_state:",new_state, "change_state:", state)
+
+        self.updated.append(curr_nucleosome)
+        if new_state == 1:
+            self.colors[curr_nucleosome] = RED
+        elif new_state == 0:
+            self.colors[curr_nucleosome] = GRAY
+        elif new_state == -1:
+            self.colors[curr_nucleosome] = BLUE
 
         self.update(old_state, new_state)
 
@@ -189,6 +245,8 @@ def main( ):
 
     chromatin = Chromatin(N_NUCLEOSOMES, TOT_EVENTS, A)
     chromatin.generate_events()
-    chromatin.run()
+#    chromatin.run()
+    chromatin.animate_nucs()
 
 main()
+
