@@ -62,16 +62,18 @@ class Event:
                 self.rand_change = 0
         
 class Chromatin:
-    def __init__(self, N_NUCLEOSOMES, TOT_EVENTS, A, init_nuc_states, divisions):
+    def __init__(self, N_NUCLEOSOMES, TOT_EVENTS, A, F, init_nuc_states, divisions, outfile):
         self.N_NUCLEOSOMES = N_NUCLEOSOMES
         self.TOT_EVENTS = TOT_EVENTS
         self.A = A
+        self.F = F
         self.nucleosomes = [Nucleosome(init_nuc_states) for x in range(self.N_NUCLEOSOMES)]
         self.events = []
         self.order = []
 
         self.total = {'M':0, 'A':0, 'U':0}
         self.colors = []
+        self.outfile = outfile
 
         self.divisionbool = divisions
         for n in self.nucleosomes:
@@ -103,7 +105,7 @@ class Chromatin:
         ax1 = fig.add_subplot(2,2,1)
         ax1.set_xticks([])
         ax1.set_yticks([])
-        ax1.set_title("N = " + str(self.N_NUCLEOSOMES) + " F = " + str(int(self.A/(1-self.A))))
+        ax1.set_title("N = " + str(self.N_NUCLEOSOMES) + " F = " + str(self.F))
 
         ax2 = fig.add_subplot(2,2,2)
         ax2.set_ylim([-5,105])
@@ -143,7 +145,7 @@ class Chromatin:
         lines.append(lobj_1)
         lines.append(lobj_2)
 
-        ax2.legend(loc="upper left")
+        ax2.legend(loc="upper right")
 
         for line in lines:
             line.set_data([],[])
@@ -166,7 +168,7 @@ class Chromatin:
             if i == 0 and len(self.order) == 0:
                 return p,(*lines) 
 
-            print("ON EVENT:",i)
+            #print("ON EVENT:",i)
 
             self.run_event()
 
@@ -194,10 +196,10 @@ class Chromatin:
 
         
         Writer = animation.writers['ffmpeg']
-        writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
+        writer = Writer(fps=200, metadata=dict(artist='Me'), bitrate=1800)
 
         #plt.show()
-        an.save('testsave.mp4', writer=writer)
+        an.save(self.outfile, writer=writer)
         
 
     def divide(self):
@@ -328,8 +330,8 @@ def exponential( ):
 
 def main( ):
 
-    if len(sys.argv) < 6:
-        print("usage: <n_nucleosomes> <n_events> <F> <init state: -2: random, -1: M, 0: U, 1: A> <divisions y/n: 0:n 1:y>", file=sys.stderr)
+    if len(sys.argv) < 7:
+        print("usage: <n_nucleosomes> <n_events> <F> <init state: -2: random, -1: M, 0: U, 1: A> <divisions y/n: 0:n 1:y> <outfilename>", file=sys.stderr)
         sys.exit(1)
 
     N_NUCLEOSOMES = int(sys.argv[1])
@@ -337,6 +339,8 @@ def main( ):
     f = float(sys.argv[3])
     A = f/(f+1)
     initstate = int(sys.argv[4])
+
+    out = sys.argv[6]
 
     divisions = False
     if int(sys.argv[5]) == 0:
@@ -346,7 +350,7 @@ def main( ):
 
     print("INPUTS: N_NUCLEOSOMES:",N_NUCLEOSOMES,"TOT_EVENTS:",TOT_EVENTS,"A:",A, "init_state:",initstate, "divisions:",divisions)
 
-    chromatin = Chromatin(N_NUCLEOSOMES, TOT_EVENTS, A, initstate, divisions)
+    chromatin = Chromatin(N_NUCLEOSOMES, TOT_EVENTS, A, f, initstate, divisions, out)
     chromatin.generate_events()
 #    chromatin.run()
     chromatin.animate_nucs()
