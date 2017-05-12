@@ -1,6 +1,7 @@
 import getopt
 import sys
 import Constants
+from MyEnum import ProbSpread, States, Domain, DomainBleed, Divisions, ProbConv
 
 class InputError(Exception):
     def __init__(self, opt, arg, msg):
@@ -23,9 +24,18 @@ def usage():
 
     print("Advanced Options")
     print("\t--prob-spread <rand, powerlaw>\n\t\tProbability distribution for spreading of modification\n\t\t[default: rand]")
-    print("\t--domain <<num domains>, <INT comma-sep list of number nucleosomes> >\n\t\tadd static domains of either equal size with user-set number of domains or custom sizes\n\t\t[default: none]")
-    print("\t--div <INT>\n\t\tnumber of divisions attempts\n\t\t[default: 5]")
-    print("\t--prob-conv <4 comma seperated floats>\n\t\tfeedback-induced conversion rates. Format: <U to M, A to U, U to A, M to U>\n\t\t[default: sequal rates]")
+
+    print("\t--domain <none, equal, set>\n\t\tadd static domains of either equal size with user-set number of domains or custom sizes\n\t\t[default: none]")
+    print("\t--domain-equal <INT>\n\t\tadd static domains of the same size. Input number of domains.\n\t\t[default:2]")
+    print("\t--domain-set <comma separated list of integers>\n\t\tadd static domains of different, user-set sizes. Input comma-sep domain sizes.\n\t\t[default:n_nucleosomes/2,n_nucleosomes/2]")
+
+    print("\t--domainbleed <none, set>\n\t\twhether to allow domain bleedthrough\n\t\t[default: none]")
+    print("\t--domainbleed-prob <FLOAT>\n\t\tprobability of domain bleed through\n\t\t[default: 0.05]")
+
+    print("\t--divisions-num <INT>\n\t\tnumber of divisions attempts\n\t\t[default: 5]")
+
+#    print("\t--prob-conv <equal,mod>\n\t\tWhether to change feedback-induced conversion rates.\n\t\t[default: equal]")
+    print("\t--prob-conv-mod <4 comma seperated floats>\n\t\tfeedback-induced conversion rates.\n\t\tFormat: <U to M, A to U, U to A, M to U>\n\t\t[default: sequal rates]")
 
 def test_int(string):
     num = int(string)
@@ -40,7 +50,7 @@ def test_float(string):
 def test_state(string):
     state = ""
     if string in ("A", "U", "M", "R"):
-        return Constants.string_to_state(string)
+        return string_to_state(string)
     else:
         raise ValueError
 
@@ -50,18 +60,32 @@ def test_emptystr(string):
     else:
         raise ValueError
 
+def test_enum(string, classname):
+    if string in classname.get_values():
+        return classname.string_to_enum(string)
+    else:
+        raise ValueError
+
 def parse_input(opts):
+    default_n = 60
     inputs = {
-        'n':60,
+        'n':default_n,
         'e':10000,
         'f':1,
-        'i':Constants.States.U_STATE,
-        'd':Constants.Divisions.NONE,
+        'i':States.U_STATE,
+        'd':Divisions.NONE,
         'o':"",
         'adv': {
-            'prob_spread' : Constants.ProbSpread.RANDOM,
-            'domain' : Constants.Domain.NONE,
-            'prob_conv' : Constants.ProbConv.EQUAL_DEFAULT
+            'prob_spread' : ProbSpread.RANDOM,
+            'domain' : Domain.NONE,
+            'domainbleed' : DomainBleed.NONE,
+            'prob_conv' : ProbConv.EQUAL_DEFAULT
+            },
+        'data': {
+            'divisions':5,
+            'prob_conv':[1,1,1,1],
+            'domains':default_n,
+            'domainbleed':0
             }
             }
 
@@ -90,18 +114,49 @@ def parse_input(opts):
                 raise InputError(opt, arg, "requires \"A\", \"U\", \"M\", or \"R\"!")
 
         elif opt in ("-d", "--divisions"):
-            inputs['d'] = Constants.Divisions.EQUAL_DEFAULT
+            inputs['d'] = Divisions.EQUAL_DEFAULT
         elif opt in ("-o", "--outfile"):
             try:
                 inputs['o'] = test_emptystr(arg)
             except ValueError:
                 raise InputError(opt, arg, "requires STRING argument!")
         elif opt == "--prob-spread":
-            if arg in ("rand", "powerlaw"):
-                inputs['adv']['prob_spread'] = str_to_ProbSpread(arg)
-
-
-
+            try:
+                inputs['adv']['prob_spread'] = test_enum(arg, ProbSpread)
+            except ValueError:
+                raise InputError(opt, arg, "must be in [" + ", ".join(ProbSpread.get_values()) + "]")
+        elif opt == "--domain":
+            try:
+                inputs['adv']['domain'] = test_enum(arg, Domain)
+            except ValueError:
+                raise InputError(opt, arg, "must be in [" + ", ".join(Domain.get_values()) + "]")
+        elif opt == "--domainbleed":
+            try:
+                inputs['adv']['domainbleed'] = test_enum(arg, DomainBleed)
+            except ValueError:
+                raise InputError(opt, arg, "must be in [" + ", ".join(DomainBleed.get_values()) + "]")
+        elif opt == "--domain-equal":
+            try:
+                inputs['adv']['domain'] = Domain.EQUAL_DEFAULT
+                inputs['data']['domains'] = test_int(arg) 
+            except ValueError:
+                raise InputError(opt, arg, "requires int!")
+        elif opt == "--domain-set":
+            raise RuntimeError("Unimplemented option:[",opt,"]")
+        elif opt == "--domainbleed-prob":
+            try:
+                inputs['adv']['domainbleed'] = DomainBleed.USER_SET
+                inputs['data']['domainbleed'] = test_float(arg)
+            except ValueError:
+                raise InputError(opt, arg, "requires float!")
+        elif opt == "--divisions-num":
+            try:
+                inputs['d'] = Divisions.USER_SET
+                inputs['data']['divisions'] = test_int(arg)
+            except ValueError:
+                raise InputError(opt, arg, "requires int!")
+        elif opt == "--prob-conv-mod":
+            raise RuntimeError("Unimplemented option:[",opt,"]")
         else:
             raise InputError(opt, arg, "unrecognized opt!")
 
@@ -112,7 +167,7 @@ def display_inputs(inputs):
     print("Nucleosomes:", inputs['n'])
     print("Events:", inputs['e'])
     print("F-value:", inputs['f'])
-    print("Init State:", Constants.state_to_string(inputs['i']))
+    print("Init State:", States.enum_to_string(inputs['i']))
     print("Divisions:", inputs['d'])
     print("Outfile:", inputs['o'])
     print("================================")
@@ -127,7 +182,15 @@ def main():
             "Fval=",
             "initstate=",
             "divisions",
-            "outfile="
+            "outfile=",
+            "prob-spread=",
+            "domain=",
+            "domain-equal=",
+            "domain-set=",
+            "domainbleed=",
+            "domainbleed-prob=",
+            "divisions-num=",
+            "prob-conv-mod="
             ])
     except getopt.GetoptError as err:
         print(str(err), file=sys.stderr)  
@@ -143,8 +206,10 @@ def main():
     except Help:
         usage()
         sys.exit(2)
+    except RuntimeError as e:
+        print(type(e).__name__ + ":", e.arg)
+        sys.exit(2)
 
-    print(Constants.ProbSpread.string_to_enum("powerlaw"))
     display_inputs(inputs) 
 
 main()
