@@ -1,6 +1,7 @@
 import getopt
 import sys
 import Constants
+import Chromatin
 from MyEnum import ProbSpread, States, Domain, DomainBleed, Divisions, ProbConv
 
 class InputError(Exception):
@@ -50,7 +51,7 @@ def test_float(string):
 def test_state(string):
     state = ""
     if string in ("A", "U", "M", "R"):
-        return string_to_state(string)
+        return States.string_to_enum(string)
     else:
         raise ValueError
 
@@ -84,7 +85,8 @@ def parse_input(opts):
         'data': {
             'divisions':5,
             'prob_conv':[1,1,1,1],
-            'domains':default_n,
+            # number of domains
+            'domains':1,
             'domainbleed':0
             }
             }
@@ -211,5 +213,8 @@ def main():
         sys.exit(2)
 
     display_inputs(inputs) 
+    chromatin = Chromatin.Chromatin(inputs)
+    chromatin.generate_all()
+    chromatin.animate()
 
 main()
