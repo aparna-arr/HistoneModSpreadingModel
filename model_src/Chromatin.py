@@ -4,27 +4,9 @@ import numpy as np
 import operator
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import scipy.stats as stats
 import math
 from MyEnum import ProbSpread, States, Domain, DomainBleed, Divisions, ProbConv
-
-#class Event:
-#    def __init__(self, a, n):
-#        self.nuc_index = random.randint(0, n - 1)
-#        self.nuc_ptr = None
-#        self.time = -1
-#        self.recruit_from = -1
-#        self.rand_change = 0
-#        self.a = a
-#        self.n = n
-#
-#        prob = random.random()
-#
-#        if prob < self.a:
-#            self.feedback_event()
-#        else:
-#            self.random_event()
-##    def feedback_event(self):
-        
 
 class Nucleosome:
     def __init__(self, init_state, left, right):
@@ -77,17 +59,78 @@ class Chromatin:
                     high_index = input_dat['n'] - 1
 
                 self.nucleosomes.append(Nucleosome(input_dat['i'], low_index, high_index))
-#            self.nucleosomes = [ Nucleosome(
-#                input_dat['i'], 
-#                math.floor(i / num_d) * domain_sizes, 
-#                math.floor(i / num_d) * domain_sizes + \
-#                        math.floor(math.ceil(i / num_d) / input_dat['n']) * domain_leftover + \
-#                        (1 - math.floor(math.ceil(i / num_d))) * math.ceil(i / num_d) * domain_sizes - 1
-#                ) for i in range(input_dat['n']) ]
-        
+
+
+        self.n_nucs = input_dat['n']
+        self.prob_mat = np.zeros(shape=(self.n_nucs,self.n_nucs))
+
+        for col in range(self.n_nucs):
+            left = self.nucleosomes[col].left_limit
+            right = self.nucleosomes[col].right_limit
+            
+            for row in range(self.n_nucs):
+                if col == row:
+                    continue
+                
+                if input_dat['adv']['domainbleed'] == DomainBleed.NONE:
+                    if row < left:
+                        continue
+                    elif row > right:
+                        break
+                    
+                    prob = 0
+                    if row < col:
+                        prob = stats.powerlaw.ppf( (col - row) / (col - left), Constants.POWER)
+                    else:
+                        prob = stats.powerlaw.ppf( (row - col) / (right - col), Constants.POWER)
+                    
+                    self.prob_mat[col,row] = prob
+                else:
+                    extreme_left = left
+                    extreme_right = right
+
+                    if left > 0:
+                        extreme_left = self.nucleosomes[left - 1].left_limit
+                    if right < self.n_nucs - 1:
+                        extreme_right = self.nucleosomes[right + 1].right_limit
+                    if row < extreme_left:
+                        continue
+                    if row > extreme_right:
+                        break
+                    prob = 0
+                    if row < left:
+                        prob = input_dat['data']['domainbleed']
+                        lim = extreme_left
+
+                        prob *= stats.powerlaw.ppf( (col - row) / (col - lim), Constants.POWER)
+                    elif row > right:
+                        prob = input_dat['data']['domainbleed']
+                        lim = extreme_right
+
+                        prob *= stats.powerlaw.ppf( (row - col) / (lim - col), Constants.POWER)
+                    elif row < col:
+                        prob = stats.powerlaw.ppf( (col - row) / (col - left), Constants.POWER)
+                    elif row > col:
+                        prob = stats.powerlaw.ppf( (row - col) / (right - col), Constants.POWER)
+
+                    self.prob_mat[col,row] = prob
+
+        self.M_mat = np.zeros(shape=(self.n_nucs))
+        self.A_mat = np.zeros(shape=(self.n_nucs))
+
+        # this is stupid change it
+        self.curr_index = 0
+
         for nuc in self.nucleosomes:
             self.colors.append(Constants.state_to_color(nuc.state))
             self.totals[nuc.state] += 1
+
+            if nuc.state == States.M_STATE:
+                self.M_mat[self.curr_index] = 1
+            if nuc.state == States.A_STATE:
+                self.A_mat[self.curr_index] = 1
+
+            self.curr_index += 1
 
     ## EVENTS ##
     def pick_random_nuc(self, curr_nuc):
