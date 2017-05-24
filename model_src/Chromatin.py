@@ -252,6 +252,104 @@ class Chromatin:
             
     
     ## END EVENTS ##
+    ## Timestep simulation
+    def timesim(self, n_nucs):
+        TOT_EVENTS = 10000
+        EVENTS_PER_TIMESTEP = 10
+        TOT_TIMESTEPS = EVENTS_PER_TIMESTEP * TOT_EVENTS
+        prob_event = EVENTS_PER_TIMESTEP / n_nucs
+
+        seq_nuc_indicies = [ x for x in range(n_nucs) ]
+        for t in range(TOT_TIMESTEPS):
+            num_events = int(np.random.poisson(EVENTS_PER_TIMESTEP))
+            nucs_w_event = rand.choice(seq_nuc_indicies, num_events)
+
+            a = self.dat['f']/(self.dat['f'] + 1)
+            num_rand_events = np.random.poisson(EVENTS_PER_TIMESTEP * a)
+            nucs_w_rand_event = rand.choice(nucs_w_event, num_rand_events)
+            nucs_w_feedback_event = list( set(nucs_w_event) - set(nucs_w_rand_event) )
+
+            for nuc in nucs_w_rand_event:
+                old = self.nucleosomes[nuc].state
+
+                if old == States.U_STATE:
+                    if rand.random() < 0.5:
+                        self.nucleosomes[nuc].state = States.A_STATE
+                        self.update(old, States.A_STATE, nuc)
+                    else:
+                        self.nucleosomes[nuc].state = States.M_STATE
+                        self.update(old, States.M_STATE, nuc)
+                else:
+                    self.nucleosomes[nuc].state = States.U_STATE
+                    self.update(old, States.U_STATE, nuc)
+            
+            ## VERY IMPORTANT that M_mat and A_mat are np ARRAYS, not matricies! WE DO NOT WANT DOT PRODUCT
+            prob_conv_M = self.prob_mat[nucs_w_feedback_event,:] * self.M_mat
+            
+            prob_conv_A = self.prob_mat[nucs_w_feedback_event,:] * self.A_mat
+
+            tot_prob_per_nuc_M = np.sum(prob_conv_M, axis = 1)
+            tot_prob_per_nuc_A = np.sum(prob_conv_A, axis = 1)
+
+            for nuc in range(len(nucs_w_feedback_event)):
+                curr_state = self.nucleosomes[nucs_w_feedback_event[nuc]].state
+                if curr_state == States.M_STATE:
+                    # by sorting, all 0's are at early indicies
+                    #sort_probs, sort_indicies = keep_index_sort(prob_conv_A[nuc])
+                    #cum_prob = np.cumsum(sort_probs, axis=1)
+
+                    #int_probs = cum_prob < rand.random()
+                    #index = np.sum(int_probs)
+
+                    #recruit_from = self.nucleosomes[nucs_w_feedback_event[sort_indicies[index]]].state
+                    if rand.random() < tot_prob_per_nuc_A[nuc] :
+                        self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.U_STATE
+                        update(curr_state, States.U_STATE)
+                elif curr_state == States.A_STATE:
+                    if rand.random() < tot_prob_per_nuc_M[nuc] :
+                        self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.U_STATE
+                        update(curr_state, States.U_STATE)
+                    #sort_probs, sort_indicies = keep_index_sort(prob_conv_M[nuc])
+                    #cum_prob = np.cumsum(sort_probs, axis=1)
+
+                else: # U state
+                    if tot_prob_per_nuc_A[nuc] != 0 and tot_prob_per_nuc_M[nuc] != 0:
+                        A_prob = tot_prob_per_nuc_A[nuc]
+                        M_prob = tot_prob_per_nuc_M[nuc]
+                        
+                        added_prob = A_prob + M_prob
+                        if added_prob > 1:
+                            # normalize to 1
+                            scaling = 1 / added_prob 
+                            A_prob *= scaling
+                            M_prob *= scaling
+
+                        cumsum = np.cumsum([1 - A_prob - M_prob, A_prob, M_prob])
+                        int_sums = cumsum < rand.random()
+                        index = np.sum(int_sums.astype(int))
+
+                        if index == 1:
+                            self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.A_STATE
+                        elif index == 2:
+                            self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.M_STATE
+                            update(curr_state, States.M_STATE)
+                        # else nothing
+
+
+    ##
+    def keep_index_sort(self, ar):
+        key_ar = [(ar[i],i) for i in range(len(ar))]
+
+        sorted_ar = sorted(key_ar, key = operator.itemgetter(0))
+        index_ar = []
+        val_ar = []
+        for val, index in sorted_ar:
+            val_ar.append(val)
+            index_ar.append(index)
+
+        return (val_ar, index_ar)
+
+
     def divide(self):
         for i in range(self.dat['n']):
             if random.random() <= 0.5:
@@ -260,12 +358,23 @@ class Chromatin:
                 self.update(prev, States.U_STATE)
                 self.colors[i] = Constants.state_to_color(States.U_STATE)
 
-    def update(self, old, new):
+    def update(self, old, new, i):
         if old == new:
             return
 
         self.totals[old] -= 1
         self.totals[new] += 1
+        self.colors[i] = Constants.state_to_color(new)
+    
+        if old == States.M_STATE:
+            self.M_mat[i] = 0
+        elif old == States.A_STATE:
+            self.A_mat[i] = 0
+
+        if new == States.M_STATE:
+            self.M_mat[i] = 1
+        elif new == States.A_STATE:
+            self.A_mat[i] = 1
 
     ## Animation ##
     def animate(self):
