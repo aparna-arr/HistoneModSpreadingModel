@@ -30,111 +30,134 @@ class Nucleosome:
 class Chromatin:
     def __init__(self, input_dat):
         self.dat = input_dat
-        self.events = []
-#        self.order = []
-        self.totals = {States.M_STATE:0, States.A_STATE:0, States.U_STATE:0}
-        self.colors = []
 
+        self.events = []
+        self.totals = {
+                States.M_STATE:0, 
+                States.A_STATE:0, 
+                States.U_STATE:0
+                }
+
+        self.colors = []
         self.nucleosomes = []
 
         self.TIME = 0
         self.time_array = []
 
-        if input_dat['adv']['domain'] == Domain.NONE:
-            self.nucleosomes = [ Nucleosome(input_dat['i'], 0, input_dat['n']-1) for x in range(input_dat['n']) ]
-        elif input_dat['adv']['domain'] == Domain.EQUAL_DEFAULT:
-            domain_sizes = math.floor(input_dat['n'] / input_dat['data']['domains'])
-            #print ("domain sizes:", domain_sizes)
-            # last domain gets the leftover
-            #domain_leftover = input_dat['n'] % input_dat['data']['domains']
+        self.prob_mat = np.zeros(shape=(input_dat['n'],input_dat['n']))
+        self.M_mat = np.zeros(shape=(input_dat['n']))
+        self.A_mat = np.zeros(shape=(input_dat['n']))
 
-            num_d = input_dat['data']['domains']
-            print("num_d:", num_d)
+        # run initialization functions
+        self.init_nucs(input_dat['adv']['domain'], input_dat['n'], input_dat['i'], input_dat['data']['domains'])
 
-            for i in range(input_dat['n']):
-                low_index = math.floor(i / domain_sizes) * domain_sizes
-                high_index = low_index + domain_sizes - 1
+        self.init_prob_mat(input_dat['n'], input_dat['adv']['domainbleed'], input_dat['data']['domainbleed'])
 
-                if high_index >= input_dat['n']:
-                    high_index = input_dat['n'] - 1
-
-                self.nucleosomes.append(Nucleosome(input_dat['i'], low_index, high_index))
+        self.init_colors_and_state_mats(input_dat['n'])
 
 
-        self.n_nucs = input_dat['n']
-        self.prob_mat = np.zeros(shape=(self.n_nucs,self.n_nucs))
+    ## init functions ##
+    def init_colors_and_state_mats(self, n):
+        for i in range(n):
+            curr_state = self.nucleosomes[i].state
+            self.colors.append(Constants.state_to_color(curr_state))
+            self.totals[curr_state] += 1
 
-        for col in range(self.n_nucs):
+            if curr_state == States.M_STATE:
+                self.M_mat[i] = 1
+            if curr_state == States.A_STATE:
+                self.A_mat[i] = 1
+
+    def init_prob_mat(self, n_nucs, db_enum, db_val):
+        for col in range(n_nucs):
             left = self.nucleosomes[col].left_limit
             right = self.nucleosomes[col].right_limit
             
-            for row in range(self.n_nucs):
+            for row in range(n_nucs):
                 if col == row:
                     continue
                 
-                if input_dat['adv']['domainbleed'] == DomainBleed.NONE:
-                    if row < left:
-                        continue
-                    elif row > right:
-                        break
-                    
-                    prob = 0
-                    if row < col:
-                        prob = stats.powerlaw.ppf( (col - row) / (col - left), Constants.POWER)
-                    else:
-                        prob = stats.powerlaw.ppf( (row - col) / (right - col), Constants.POWER)
-                    
-                    self.prob_mat[col,row] = prob
-                else:
-                    extreme_left = left
-                    extreme_right = right
+                prob = self.calc_prob(col, row, right, left, db_enum, db_val, n_nucs)
 
-                    if left > 0:
-                        extreme_left = self.nucleosomes[left - 1].left_limit
-                    if right < self.n_nucs - 1:
-                        extreme_right = self.nucleosomes[right + 1].right_limit
-                    if row < extreme_left:
-                        continue
-                    if row > extreme_right:
-                        break
-                    prob = 0
-                    if row < left:
-                        prob = input_dat['data']['domainbleed']
-                        lim = extreme_left
+                if prob == -1:
+                    continue
+                elif prob == -2:
+                    break
 
-                        prob *= stats.powerlaw.ppf( (col - row) / (col - lim), Constants.POWER)
-                    elif row > right:
-                        prob = input_dat['data']['domainbleed']
-                        lim = extreme_right
+                self.prob_mat[col,row] = prob
 
-                        prob *= stats.powerlaw.ppf( (row - col) / (lim - col), Constants.POWER)
-                    elif row < col:
-                        prob = stats.powerlaw.ppf( (col - row) / (col - left), Constants.POWER)
-                    elif row > col:
-                        prob = stats.powerlaw.ppf( (row - col) / (right - col), Constants.POWER)
+    def init_nucs(self, domain_enum, n, initstate, num_domains):
+        if domain_enum == Domain.NONE:
+            self.nucleosomes = [ 
+                    Nucleosome(initstate, 0, n) for x in range(n) 
+                    ]
+        elif domain_enum == Domain.EQUAL_DEFAULT:
+            domain_sizes = math.floor(n / num_domains)
+            num_d = num_domains
 
-                    self.prob_mat[col,row] = prob
+            for i in range(n):
+                low_index = math.floor(i / domain_sizes) * domain_sizes
+                high_index = low_index + domain_sizes - 1
 
-        self.M_mat = np.zeros(shape=(self.n_nucs))
-        self.A_mat = np.zeros(shape=(self.n_nucs))
+                if high_index >= n :
+                    high_index = n - 1
 
-        # this is stupid change it
-        self.curr_index = 0
+                self.nucleosomes.append(
+                        Nucleosome(initstate, low_index, high_index)
+                        )
 
-        for nuc in self.nucleosomes:
-            self.colors.append(Constants.state_to_color(nuc.state))
-            self.totals[nuc.state] += 1
 
-            if nuc.state == States.M_STATE:
-                self.M_mat[self.curr_index] = 1
-            if nuc.state == States.A_STATE:
-                self.A_mat[self.curr_index] = 1
+    def calc_prob(self, col, row, right, left, domainbleed_enum, domainbleed_val, n):
+        if domainbleed_enum == DomainBleed.NONE:
+            if row < left:
+                return -1 # continue
+            elif row > right:
+                return -2 # break
+            
+            if row < col:
+                return stats.powerlaw.ppf( (col - row) / (col - left), Constants.POWER)
+            else:
+                return stats.powerlaw.ppf( (row - col) / (right - col), Constants.POWER)
+            
+        else:
+            extreme_left = left
+            extreme_right = right
 
-            self.curr_index += 1
+            if left > 0:
+                extreme_left = self.nucleosomes[left - 1].left_limit
+
+            if right < n - 1:
+                extreme_right = self.nucleosomes[right + 1].right_limit
+
+            if row < extreme_left:
+                return -1 # continue
+
+            if row > extreme_right:
+                return -2 # break
+
+            prob = 0
+
+            if row < left:
+                prob = domainbleed_val * stats.powerlaw.ppf( 
+                        (col - row) / (col - extreme_left), Constants.POWER
+                        )
+            elif row > right:
+                prob = domainbleed_val * stats.powerlaw.ppf(
+                        (row - col) / (extreme_right - col), Constants.POWER
+                        )
+            elif row < col:
+                prob = stats.powerlaw.ppf( 
+                        (col - row) / (col - left), Constants.POWER
+                        )
+            elif row > col:
+                prob = stats.powerlaw.ppf( 
+                        (row - col) / (right - col), Constants.POWER
+                        )
+
+            return prob
 
     ## EVENTS ##
     def pick_random_nuc(self, curr_nuc):
-
         left = self.nucleosomes[curr_nuc].left_limit 
         right = self.nucleosomes[curr_nuc].right_limit
 
@@ -146,29 +169,20 @@ class Chromatin:
                 if left > 0:
                     left = self.nucleosomes[curr_nuc - 1].left_limit
                 if right < self.dat['n'] - 1:
-                    left = self.nucleosomes[curr_nuc + 1].right_limit
+                    right = self.nucleosomes[curr_nuc + 1].right_limit
 
         if self.dat['adv']['prob_spread'] == ProbSpread.RANDOM :
-            #print("left:", left, "right:",right, "nuc", curr_nuc)
             seq = list(range(left,curr_nuc)) + list(range(curr_nuc+1, right))
             return random.choice(seq)
         elif self.dat['adv']['prob_spread'] == ProbSpread.POWERLAW :
             left = curr_nuc - self.nucleosomes[curr_nuc].left_limit  
             right = self.nucleosomes[curr_nuc].right_limit - curr_nuc
-
-            #dist = Constants.truncated_power_law(1, left, right)
-            #result = dist.rvs(size=1) + curr_nuc
             result = Constants.truncated_power_law(1, left, right)
-            #print("limits: left", left, "right:", right, "result",result)
             return int(result + curr_nuc)
 
 
     def feedback_event(self, curr_nuc):
         return self.pick_random_nuc(curr_nuc)
-
-#    def random_event(self):
-#        return -1 
-
 
     def generate_event(self):
         curr_nuc = random.randint(0, self.dat['n'] - 1)
@@ -181,42 +195,17 @@ class Chromatin:
             next_event = self.feedback_event(curr_nuc)
 
         self.events.append({'nuc' : curr_nuc, 'event' : next_event})
-        
-        #return len(self.events) - 1
 
     def generate_all(self):
-#        tmp_order = []
-        
         while len(self.events) < self.dat['e']:
             events_index = self.generate_event()
 
-#            beg_time = np.random.exponential(1/Constants.AVG_CR_TIME)
-#            tmp_order.append({'index':events_index, 'time':beg_time})
-
-#        self.order = [ x for x in sorted(tmp_order, key=operator.itemgetter('time'), reverse=True) ]
-
     def run_event(self, t):
-#        event_time_dict = self.order.pop()
-#        index = event_time_dict['index']
-#        beg_time = event_time_dict['time']
-
-#        event_info = self.events[index]
         event_info = self.events.pop(0)
         curr_nuc = event_info['nuc']
         event = event_info['event']
 
-        
-#        t_next = np.random.exponential(Constants.AVG_CR_TIME)
-
         t_next = -1
-
-#        print("========")
-#        print("T_NEXT", t_next)
-#        print("T", t)
-#        curr_t = t + t_next
-#        print("CURR_T", curr_t)
-#        print("========")
-
         old_state = self.nucleosomes[curr_nuc].state
         new_state = old_state
 
@@ -226,11 +215,10 @@ class Chromatin:
             options = list(possible_states.difference({old_state}))
 
             prob = random.random()
-#            if prob < 1/3:
+
             if prob < 1/2:
                 new_state = options[0]
                 t_next = np.random.exponential(Constants.get_rate(old_state, new_state))
-#            elif prob < 2/3:
             else:
                 new_state = options[1]
                 t_next = np.random.exponential(Constants.get_rate(old_state, new_state))
@@ -240,7 +228,6 @@ class Chromatin:
 
             if rec_state == States.U_STATE:
                 # want the rate for a no-attempt
-#                t_next = np.random.exponential(Constants.NOTHING_HAPPENED)
                 t_next = 0
                 new_state = old_state
             else:
@@ -252,24 +239,16 @@ class Chromatin:
             print("ERROR t_next < 0!!!")
 
         curr_t = t + t_next
-        
-        #duration_time = Constants.AVG_CR_TIME/10 # JUST FOR NOW
-        #if duration_time + beg_time > curr_time
             
         if new_state == old_state :
             self.generate_event()
-#            print("PASSING CURR_T AS T", curr_t)
             return self.run_event(curr_t)
-#            print("FROM IF: returning ", curr_time)
-#            return curr_time
         else:
             self.nucleosomes[curr_nuc].change_state(new_state)
             new_assigned = self.nucleosomes[curr_nuc].state
             self.colors[curr_nuc] = Constants.state_to_color(new_assigned)
             self.update(old_state, new_assigned)
-#            print("FROM ELSE: returning ", curr_t)
             return curr_t
-            #        if new_state != old_state and new_state != States.U_STATE:
             
     
     ## END EVENTS ##
