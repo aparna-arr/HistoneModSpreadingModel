@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import scipy.stats as stats
 import math
-from MyEnum import ProbSpread, States, Domain, DomainBleed, Divisions, ProbConv
+import sys
+from MyEnum import ProbSpread, States, Domain, DomainBleed, Divisions, ProbConv, Recruit
 
 class Nucleosome:
     def __init__(self, init_state, left, right):
@@ -159,6 +160,8 @@ class Chromatin:
             return prob
 
     def handle_timers(self, index, old, new, timers, nuc_seq, map_seq, lim):
+        #self.update(old, new, index)
+        #return lim
         t_next = int(np.random.exponential(Constants.get_rate(old, new)))
 
         if t_next > 0:
@@ -212,8 +215,9 @@ class Chromatin:
         fp.write("\n")
         
     ## Timestep simulation
-    def timesim(self, n_nucs):
-        EVENTS_PER_TIMESTEP = 10
+    def timesim(self, n_nucs, sim_num):
+        EVENTS_PER_NUC_PER_TIMESTEP = 0.1
+        EVENTS_PER_TIMESTEP = int(EVENTS_PER_NUC_PER_TIMESTEP * self.dat['n'])
         TOT_TIMESTEPS = self.dat['t'] 
         prob_event = EVENTS_PER_TIMESTEP / n_nucs
     
@@ -221,10 +225,10 @@ class Chromatin:
         map_to_seq = [ x for x in range(n_nucs) ]
         nuc_index_seq = [ x for x in range(n_nucs) ]
         lim = n_nucs
-        fp = open(self.dat['o'] + ".txt", "w")
+        fp = open(self.dat['o'] + "_" + str(sim_num) + ".txt", "w")
 
         for t in range(TOT_TIMESTEPS):
-            print("timestep:",t)
+            #print("timestep:",t)
             # handle timers first
             self.print_nucs(fp)
 
@@ -266,11 +270,12 @@ class Chromatin:
                         self.update(old, new, nuc)
                     continue
 
-            if t >= Constants.RECRUIT_INIT_TIME and \
-                    t <= (Constants.RECRUIT_INIT_TIME + 
-                            Constants.RECRUIT_TIMESTEPS):
-                start_nuc = int(self.dat['n']/2 - Constants.RECRUIT_N_NUCS/2)
-                end_nuc = start_nuc + Constants.RECRUIT_N_NUCS
+            if self.dat['r'] != Recruit.NONE and \
+                    t >= self.dat['data']['recruit_time_init'] and \
+                    t <= (self.dat['data']['recruit_time_init'] + 
+                            self.dat['data']['recruit_time']):
+                start_nuc = int(self.dat['n']/2 - self.dat['data']['recruit_n']/2)
+                end_nuc = start_nuc + self.dat['data']['recruit_n']
                 #print("start_nuc, end_nuc:", start_nuc, end_nuc)
                 for i in range(start_nuc, end_nuc):
                     nuc_seq_i = map_to_seq[i]
@@ -300,15 +305,18 @@ class Chromatin:
 
             #print("num feedback:", len(nucs_w_feedback_event))
 
+#            print("T =", t, "lim:", lim, "total:", len(nucs_w_event), "rand:", len(nucs_w_rand_event), "feedback:", len(nucs_w_feedback_event), file=sys.stderr)
+#            print("M:", self.totals[States.M_STATE], "A:", self.totals[States.A_STATE], "U:", self.totals[States.U_STATE], file=sys.stderr)
             for nuc in nucs_w_rand_event:
                 old = self.nucleosomes[nuc].state
 
                 if old == States.U_STATE:
-                    if random.random() < 0.5:
-                        lim = self.handle_timers(nuc, old, States.A_STATE, timers, nuc_index_seq, map_to_seq, lim)
-                    else:
-                        lim = self.handle_timers(nuc, old, States.M_STATE, timers, nuc_index_seq, map_to_seq, lim)
-                else:
+                    if random.random() < 2/3:
+                        if random.random() < 0.5:
+                            lim = self.handle_timers(nuc, old, States.A_STATE, timers, nuc_index_seq, map_to_seq, lim)
+                        else:
+                            lim = self.handle_timers(nuc, old, States.M_STATE, timers, nuc_index_seq, map_to_seq, lim)
+                elif random.random() < 1/3:
                     lim = self.handle_timers(nuc, old, States.U_STATE, timers, nuc_index_seq, map_to_seq, lim)
             
             ## VERY IMPORTANT that M_mat and A_mat are np ARRAYS, not matricies! WE DO NOT WANT DOT PRODUCT
@@ -316,11 +324,12 @@ class Chromatin:
             
             prob_conv_A = self.prob_mat[nucs_w_feedback_event,:] * self.A_mat
 
-            tot_prob_per_nuc_M = np.sum(prob_conv_M, axis = 1)
-            tot_prob_per_nuc_A = np.sum(prob_conv_A, axis = 1)
+            tot_prob_per_nuc_M = np.sum(prob_conv_M, axis = 1) / self.dat['n'] 
+            tot_prob_per_nuc_A = np.sum(prob_conv_A, axis = 1) / self.dat['n']
 
             for nuc in range(len(nucs_w_feedback_event)):
                 curr_state = self.nucleosomes[nucs_w_feedback_event[nuc]].state
+#                print("feedback: probA:", tot_prob_per_nuc_A[nuc], "probM:", tot_prob_per_nuc_M[nuc], "curr_state:", curr_state, file=sys.stderr)
                 if curr_state == States.M_STATE:
                     if random.random() < tot_prob_per_nuc_A[nuc] :
                         lim = self.handle_timers(nucs_w_feedback_event[nuc], curr_state, States.U_STATE, timers, nuc_index_seq, map_to_seq, lim)

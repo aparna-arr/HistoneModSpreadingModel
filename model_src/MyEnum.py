@@ -31,6 +31,11 @@ class ProbSpread(MyEnum):
     vals = ("rand", "powerlaw")
     enum_list = (RANDOM, POWERLAW)
 
+class Recruit(MyEnum):
+    NONE, DEFAULT, USER_SET = range(3)
+    vals = ("none", "default", "user_set")
+    enum_list = (NONE, DEFAULT, USER_SET)
+
 class States(MyEnum):
     INIT_STATE, M_STATE, U_STATE, A_STATE = range(4)
     vals = ("R", "M", "U", "A")

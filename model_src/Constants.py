@@ -29,15 +29,16 @@ POWER = 2 # arbitrary number
 
 def get_rate(old, new):
     if old == new:
-        if old == States.M_STATE:
-            return CR_U_to_M
-        
-        if old == States.A_STATE:
-            return CR_U_to_A
-
-        if old == States.U_STATE:
-            return 0
-        # can't have a U - to - U
+        return 0
+#        if old == States.M_STATE:
+#            return CR_U_to_M
+#        
+#        if old == States.A_STATE:
+#            return CR_U_to_A
+#
+#        if old == States.U_STATE:
+#            return 0
+#        # can't have a U - to - U
     else:
         if old == States.M_STATE:
             return CR_M_to_U
@@ -54,8 +55,8 @@ def get_rate(old, new):
 
 SEED = 1
 
-random.seed(SEED)
-np.random.seed(SEED)
+#random.seed(SEED)
+#np.random.seed(SEED)
 
 GRAY = (0.662745,0.662745,0.662745)
 RED = (0.545098,0,0)
