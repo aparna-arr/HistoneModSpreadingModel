@@ -214,7 +214,9 @@ def main():
 
     display_inputs(inputs) 
     chromatin = Chromatin.Chromatin(inputs)
-    chromatin.generate_all()
-    chromatin.animate()
+#    chromatin.generate_all()
+#    chromatin.animate()
+    chromatin.timesim(inputs['n'])
+    chromatin.animate_from_file()
 
 main()

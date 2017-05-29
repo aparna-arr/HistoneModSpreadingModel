@@ -250,7 +250,7 @@ class Chromatin:
             self.update(old_state, new_assigned)
             return curr_t
             
-    def handle_timers(self, index, old, new, timers):
+    def handle_timers(self, index, old, new, timers, nuc_seq, map_seq, lim):
         t_next = int(np.random.exponential(Constants.get_rate(old, new)))
 
         if t_next > 0:
@@ -259,30 +259,94 @@ class Chromatin:
                 'old' : old,
                 'new' : new
                     }
+            #print("map_seq index:", map_seq[index])
+            #nuc_seq.pop(map_seq[index])
+            return self.fake_del(map_seq, nuc_seq, lim, index)
+            #tmp = nuc_seq[lim - 1]
+            #nuc_seq[lim - 1] = map_seq[index]
+            #nuc_seq[map_seq[index]] = tmp
+            #map_seq[tmp] = map_seq[index]
+            #map_seq[index] = lim - 1
+            #lim -= 1
+
         else:
             self.update(old, new, index)
+            return lim
 
+    def fake_del(self, map_seq, nuc_seq, lim, del_elem):
+#        print("Call to fake_del()")
+        if lim >= 0:
+            lim -= 1
+
+            tmp = nuc_seq[lim]
+
+            del_elem_index = map_seq[del_elem]
+            nuc_seq[lim] = nuc_seq[del_elem_index]
+            map_seq[del_elem] = lim
+
+            nuc_seq[del_elem_index] = tmp
+            map_seq[tmp] = del_elem_index
+
+            return lim
+        else:
+            print("ERROR trying to delete but everything is deleted!")
+
+    def fake_readd(self, map_seq, nuc_seq, lim, add_elem):
+#        print("Call to fake_add()")
+        if lim < len(nuc_seq):
+            add_elem_index = map_seq[add_elem]
+            tmp = nuc_seq[lim]
+
+            nuc_seq[lim] = nuc_seq[add_elem_index]
+            map_seq[add_elem] = lim
+
+            nuc_seq[add_elem_index] = tmp
+            map_seq[tmp] = add_elem_index
+
+            return lim + 1
+        else:
+            print("ERROR trying to re-add but nothing deleted!")
+
+    def print_nucs(self, fp):
+        for n in self.nucleosomes:
+            fp.write(States.enum_to_string(n.state))
+
+        fp.write("\n")
         
     ## END EVENTS ##
     ## Timestep simulation
     def timesim(self, n_nucs):
-        TOT_EVENTS = 10000
+        TOT_EVENTS = self.dat['e']
         EVENTS_PER_TIMESTEP = 10
-        TOT_TIMESTEPS = EVENTS_PER_TIMESTEP * TOT_EVENTS
+        TOT_TIMESTEPS = int(TOT_EVENTS / EVENTS_PER_TIMESTEP) 
         prob_event = EVENTS_PER_TIMESTEP / n_nucs
     
         timers = {}
+        map_to_seq = [ x for x in range(n_nucs) ]
         nuc_index_seq = [ x for x in range(n_nucs) ]
-        curr_limit = n_nucs
+        lim = n_nucs
+
+
+        fp = open("sim_bigfile.txt", "w")
+
+
         #seq_nuc_indicies = [ x for x in range(n_nucs) ]
         for t in range(TOT_TIMESTEPS):
             # handle timers first
+            self.print_nucs(fp)
+
+#            print("lim of nuc_index_seq:", lim)
             delete_timers = []
             for nuc_index in timers:
                 if timers[nuc_index]['timer'] == 0:
                     # add back to pool & update
-                    nuc_index_seq.append(nuc_index)
-                    curr_limit += 1
+                    #tmp = nuc_index_seq[lim]
+
+                    #map_to_seq[nuc_index] = lim
+                    #nuc_index_seq.append(nuc_index)
+                    #curr_limit += 1
+                    
+                    lim = self.fake_readd(map_to_seq, nuc_index_seq, lim, nuc_index)
 
                     old = timers[nuc_index]['old']
                     new = timers[nuc_index]['new']
@@ -295,27 +359,41 @@ class Chromatin:
             for timer in delete_timers:
                 del timers[timer]
 
-            num_events = int(np.random.poisson(EVENTS_PER_TIMESTEP))
-            nucs_w_event = rand.choice(seq_nuc_indicies, num_events)
+            num_events = int(np.random.poisson(EVENTS_PER_TIMESTEP * (lim / n_nucs)))
 
-            a = self.dat['f']/(self.dat['f'] + 1)
-            num_rand_events = np.random.poisson(EVENTS_PER_TIMESTEP * a)
-            nucs_w_rand_event = rand.choice(nucs_w_event, num_rand_events)
+            if num_events >= lim:
+                num_events = lim 
+
+            nucs_w_event = random.sample(nuc_index_seq[:lim], num_events)
+#            print("len(nucs_w_event)", len(nucs_w_event))
+
+            a = 1/(self.dat['f'] + 1)
+            
+            num_rand_events = np.random.poisson(EVENTS_PER_TIMESTEP * (lim / n_nucs) * a)
+
+
+            print("num events total", len(nucs_w_event))
+            print("a", a, "adj poisson center:", EVENTS_PER_TIMESTEP * (lim / n_nucs) * a, "num rand events:", num_rand_events)
+    
+            if num_rand_events > len(nucs_w_event):
+                num_rand_events = len(nucs_w_event)
+
+#            print("num_rand_events",num_rand_events)
+            nucs_w_rand_event = random.sample(nucs_w_event, num_rand_events)
             nucs_w_feedback_event = list( set(nucs_w_event) - set(nucs_w_rand_event) )
+
+            print("num feedback:", len(nucs_w_feedback_event))
 
             for nuc in nucs_w_rand_event:
                 old = self.nucleosomes[nuc].state
 
                 if old == States.U_STATE:
-                    if rand.random() < 0.5:
-                        self.nucleosomes[nuc].state = States.A_STATE
-                        self.update(old, States.A_STATE, nuc)
+                    if random.random() < 0.5:
+                        lim = self.handle_timers(nuc, old, States.A_STATE, timers, nuc_index_seq, map_to_seq, lim)
                     else:
-                        self.nucleosomes[nuc].state = States.M_STATE
-                        self.update(old, States.M_STATE, nuc)
+                        lim = self.handle_timers(nuc, old, States.M_STATE, timers, nuc_index_seq, map_to_seq, lim)
                 else:
-                    self.nucleosomes[nuc].state = States.U_STATE
-                    self.update(old, States.U_STATE, nuc)
+                    lim = self.handle_timers(nuc, old, States.U_STATE, timers, nuc_index_seq, map_to_seq, lim)
             
             ## VERY IMPORTANT that M_mat and A_mat are np ARRAYS, not matricies! WE DO NOT WANT DOT PRODUCT
             prob_conv_M = self.prob_mat[nucs_w_feedback_event,:] * self.M_mat
@@ -328,13 +406,15 @@ class Chromatin:
             for nuc in range(len(nucs_w_feedback_event)):
                 curr_state = self.nucleosomes[nucs_w_feedback_event[nuc]].state
                 if curr_state == States.M_STATE:
-                    if rand.random() < tot_prob_per_nuc_A[nuc] :
-                        self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.U_STATE
-                        update(curr_state, States.U_STATE)
+                    if random.random() < tot_prob_per_nuc_A[nuc] :
+                        lim = self.handle_timers(nucs_w_feedback_event[nuc], curr_state, States.U_STATE, timers, nuc_index_seq, map_to_seq, lim)
+                        #self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.U_STATE
+                        #update(curr_state, States.U_STATE)
                 elif curr_state == States.A_STATE:
-                    if rand.random() < tot_prob_per_nuc_M[nuc] :
-                        self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.U_STATE
-                        update(curr_state, States.U_STATE)
+                    if random.random() < tot_prob_per_nuc_M[nuc] :
+                        lim = self.handle_timers(nucs_w_feedback_event[nuc], curr_state, States.U_STATE, timers, nuc_index_seq, map_to_seq, lim)
+                        #self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.U_STATE
+                        #update(curr_state, States.U_STATE)
                 else: # U state
                     if tot_prob_per_nuc_A[nuc] != 0 and \
                             tot_prob_per_nuc_M[nuc] != 0:
@@ -351,17 +431,19 @@ class Chromatin:
                             M_prob *= scaling
 
                         cumsum = np.cumsum([1 - A_prob - M_prob, A_prob, M_prob])
-                        int_sums = cumsum < rand.random()
+                        int_sums = cumsum < random.random()
                         index = np.sum(int_sums.astype(int))
 
                         if index == 1:
-                            self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.A_STATE
+                            lim = self.handle_timers(nucs_w_feedback_event[nuc], curr_state, States.A_STATE, timers, nuc_index_seq, map_to_seq, lim)
+                            #self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.A_STATE
                         elif index == 2:
-                            self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.M_STATE
-                            update(curr_state, States.M_STATE)
+                            lim = self.handle_timers(nucs_w_feedback_event[nuc], curr_state, States.M_STATE, timers, nuc_index_seq, map_to_seq, lim)
+                            #self.nucleosomes[nucs_w_feedback_event[nuc]].state = States.M_STATE
+                            #update(curr_state, States.M_STATE)
                         # else nothing
 
-
+        fp.close()
     ##
     def keep_index_sort(self, ar):
         key_ar = [(ar[i],i) for i in range(len(ar))]
@@ -405,6 +487,131 @@ class Chromatin:
             self.A_mat[i] = 1
 
     ## Animation ##
+    def animate_from_file(self):
+        # base figure
+        fig = plt.figure()
+        # axes
+        # figure 1: nucleosomes
+        ax1 = fig.add_subplot(2,2,1)
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+
+        titlestr = "N = " + str(self.dat['n']) + " F = " + str(self.dat['f'])
+        ax1.set_title(titlestr)
+
+        # figure 2: proportion vs events
+        ax2 = fig.add_subplot(2,2,2)
+        ax2.set_ylim([-5,105])
+        ax2.set_xlim(self.dat['e']/10/40, self.dat['e']/10 + self.dat['e']/10/40)
+        ax2.set_xlabel("Timesteps")
+        ax2.set_ylabel("% Nucleosomes")
+
+        ax3 = fig.add_subplot(2,2,3)
+        # adjust spacing between figures
+        fig.tight_layout()
+
+        # calculate size of square for nucleosomes in fig 1
+        cols = math.ceil(math.sqrt(self.dat['n']))
+        rows = math.ceil(self.dat['n']/cols)
+
+        x_int = 1/cols
+        y_int = 1/rows
+
+        x_vals = []
+        y_vals = []
+
+        count = 0
+        for i in range(rows):
+            for j in range(cols):
+                if count >= self.dat['n']:
+                    break
+                
+                x_vals.append(j * x_int)
+                y_vals.append(i * y_int)
+                count += 1
+
+        # initialize fig1 as a scatterplot
+        scat = ax1.scatter(x_vals, y_vals, facecolors = self.colors)
+
+        # initialize fig2 as a lineplot
+        lines = []
+        lines.append(ax2.plot([], [], lw = 2, color = "red", label = "A")[0])
+        lines.append(ax2.plot([], [], lw = 2, color = "blue", label = "M")[0])
+        ax2.legend(loc = "upper right")
+
+        for line in lines:
+            line.set_data([],[])
+
+        linex = []
+        liney = [[], []]
+
+        global file_sim
+        file_sim = open("sim_bigfile.txt", "r")
+
+        def init_an():
+            '''initialize animation: this is needed'''
+            return scat, (*lines)
+
+        def update_an(i):
+            '''update function for animation'''
+#            if i == 0 or len(self.order) == 0:
+#            if i == 0 or len(self.events) == 0:
+            if i == 0:
+                return scat, (*lines)
+
+            line = file_sim.readline()
+
+
+            self.totals[States.A_STATE] = 0
+            self.totals[States.U_STATE] = 0
+            self.totals[States.M_STATE] = 0
+            index = 0
+
+            for nuc in list(line.rstrip()):
+                self.totals[States.string_to_enum(nuc)] += 1
+                self.colors[index] = Constants.state_to_color(States.string_to_enum(nuc))
+                index += 1
+
+#            print("PASSING self.TIME as t:", self.TIME)
+#            self.TIME = self.run_event(self.TIME)
+#            self.time_array.append(self.TIME)
+            #print("Frame:",i)
+            #print("Time is:", self.TIME)
+#            print("After event, self.TIME is", self.TIME)
+
+#            if self.dat['d'] != Divisions.NONE and i != 0:
+#                div = self.dat['data']['divisions']
+#                if i % int(self.dat['e'] / div) == 0:
+#                    self.divide()
+#                    lines.append(ax2.plot([], [], lw = 1, ls = "dotted", color = "black")[0])
+#                    lines[len(lines) - 1].set_data([i, i], [-5, 105])
+
+            linex.append(i)
+            liney[0].append(self.totals[States.A_STATE] / self.dat['n'] * 100)
+            liney[1].append(self.totals[States.M_STATE] / self.dat['n'] * 100)
+
+            lines[0].set_data(linex, liney[0])
+            lines[1].set_data(linex, liney[1])
+
+            scat.set_facecolors(self.colors)
+
+            return scat, (*lines)
+
+        anim = animation.FuncAnimation(fig, update_an, init_func = init_an, frames = int(self.dat['e']/10), interval = 1, repeat = False, blit=True)
+
+        if self.dat['o'] != "":
+            Writer = animation.writers['ffmpeg']
+            writer = Writer(fps = 200, metadata = dict(artist = 'Me'), bitrate = 1800)
+            anim.save(self.dat['o'] + ".mp4", writer = writer)
+            #print(self.time_array)
+            fp = open(self.dat['o'] + ".times", "w")
+            string = '\n'.join(str(x) for x in self.time_array)
+            fp.write(string)
+            fp.close()
+        else:
+            plt.show()
+            file_sim.close()
+
     def animate(self):
         # base figure
         fig = plt.figure()

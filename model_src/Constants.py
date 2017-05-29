@@ -10,10 +10,14 @@ PROB_NOTHING = 0.25
 
 
 #NOTHING_HAPPENED = 0.05
-CR_U_to_A = 0.1
-CR_A_to_U = 0.7
-CR_U_to_M = 0.1
-CR_M_to_U = 0.8
+#CR_U_to_A = 0.1
+#CR_A_to_U = 0.7
+#CR_U_to_M = 0.1
+#CR_M_to_U = 0.8
+CR_U_to_A = 0.5
+CR_A_to_U = 0.5
+CR_U_to_M = 0.5
+CR_M_to_U = 0.5
 
 POWER = 2 # arbitrary number
 
