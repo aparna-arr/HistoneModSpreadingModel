@@ -4,6 +4,12 @@ import numpy as np
 import scipy.stats as stats
 from MyEnum import States
 
+RECRUIT_TIMESTEPS = 50 # duration
+RECRUIT_INIT_TIME = 20 # start at t = 20
+RECRUIT_N_NUCS = 50 # number of nucleosomes recruited to
+RECRUIT_CONV_TO = States.M_STATE
+
+
 # number of events in a timestep determines prob of nothing
 # RANDOM NUMBER RIGHT NOW
 PROB_NOTHING = 0.25
@@ -29,6 +35,8 @@ def get_rate(old, new):
         if old == States.A_STATE:
             return CR_U_to_A
 
+        if old == States.U_STATE:
+            return 0
         # can't have a U - to - U
     else:
         if old == States.M_STATE:

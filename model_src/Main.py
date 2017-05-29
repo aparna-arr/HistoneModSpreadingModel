@@ -3,6 +3,7 @@ import sys
 import Constants
 import Chromatin
 from MyEnum import ProbSpread, States, Domain, DomainBleed, Divisions, ProbConv
+from Animate import animate_from_file
 
 class InputError(Exception):
     def __init__(self, opt, arg, msg):
@@ -17,7 +18,7 @@ def usage():
     print("usage: python3 Main.py [OPTIONS]")
     print("\t-h, --help\n\t\tprint usage statement and exit")
     print("\t-n, --nucleosomes <INT>\n\t\tnumber of nucleosomes\n\t\t[default: 60]")
-    print("\t-e, --events <INT>\n\t\tnumber of events\n\t\t[default: 10000]")
+    print("\t-t, --timesteps <INT>\n\t\tnumber of timesteps\n\t\t[default: 10000]")
     print("\t-f, --Fval <FLOAT>\n\t\tnoise level\n\t\t[default: 1]")
     print("\t-i, --initstate <A, U, M, R>\n\t\tinitial state of nucleosomes. R is random.\n\t\t[default: U]")
     print("\t-d, --divisions\n\t\tinclude divisions in simulation\n\t\t[default: False]")
@@ -33,7 +34,7 @@ def usage():
     print("\t--domainbleed <none, set>\n\t\twhether to allow domain bleedthrough\n\t\t[default: none]")
     print("\t--domainbleed-prob <FLOAT>\n\t\tprobability of domain bleed through\n\t\t[default: 0.05]")
 
-    print("\t--divisions-num <INT>\n\t\tnumber of divisions attempts\n\t\t[default: 5]")
+    print("\t--divisions-num <INT>\n\t\tnumber of timesteps between divisions\n\t\t[default: 100]")
 
 #    print("\t--prob-conv <equal,mod>\n\t\tWhether to change feedback-induced conversion rates.\n\t\t[default: equal]")
     print("\t--prob-conv-mod <4 comma seperated floats>\n\t\tfeedback-induced conversion rates.\n\t\tFormat: <U to M, A to U, U to A, M to U>\n\t\t[default: sequal rates]")
@@ -71,7 +72,7 @@ def parse_input(opts):
     default_n = 60
     inputs = {
         'n':default_n,
-        'e':10000,
+        't':10000,
         'f':1,
         'i':States.U_STATE,
         'd':Divisions.NONE,
@@ -83,7 +84,7 @@ def parse_input(opts):
             'prob_conv' : ProbConv.EQUAL_DEFAULT
             },
         'data': {
-            'divisions':5,
+            'divisions':100,
             'prob_conv':[1,1,1,1],
             # number of domains
             'domains':1,
@@ -99,9 +100,9 @@ def parse_input(opts):
                 inputs['n'] = test_int(arg)
             except ValueError:
                 raise InputError(opt, arg, "requires int!")
-        elif opt in ("-e", "--events"):
+        elif opt in ("-t", "--timesteps"):
             try:
-                inputs['e'] = test_int(arg)
+                inputs['t'] = test_int(arg)
             except ValueError:
                 raise InputError(opt, arg, "requires int!")
         elif opt in ("-f", "--Fval"):
@@ -116,7 +117,8 @@ def parse_input(opts):
                 raise InputError(opt, arg, "requires \"A\", \"U\", \"M\", or \"R\"!")
 
         elif opt in ("-d", "--divisions"):
-            inputs['d'] = Divisions.EQUAL_DEFAULT
+            if inputs['d'] == Divisions.NONE:
+                inputs['d'] = Divisions.EQUAL_DEFAULT
         elif opt in ("-o", "--outfile"):
             try:
                 inputs['o'] = test_emptystr(arg)
@@ -167,7 +169,7 @@ def parse_input(opts):
 def display_inputs(inputs):
     print("==========## INPUTS ##==========")
     print("Nucleosomes:", inputs['n'])
-    print("Events:", inputs['e'])
+    print("Timesteps:", inputs['t'])
     print("F-value:", inputs['f'])
     print("Init State:", States.enum_to_string(inputs['i']))
     print("Divisions:", inputs['d'])
@@ -177,10 +179,10 @@ def display_inputs(inputs):
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hn:e:f:i:do:", [
+        opts, args = getopt.getopt(sys.argv[1:], "hn:t:f:i:do:", [
             "help",
             "nucleosomes=", 
-            "events=",
+            "timesteps=",
             "Fval=",
             "initstate=",
             "divisions",
@@ -212,11 +214,13 @@ def main():
         print(type(e).__name__ + ":", e.arg)
         sys.exit(2)
 
-    display_inputs(inputs) 
+    display_inputs(inputs)
+
+    if inputs['o'] == "":
+        inputs['o'] = "sim"
+
     chromatin = Chromatin.Chromatin(inputs)
-#    chromatin.generate_all()
-#    chromatin.animate()
     chromatin.timesim(inputs['n'])
-    chromatin.animate_from_file()
+    animate_from_file(inputs['o'] + '.txt', inputs['n'], inputs['f'], inputs['t'], inputs['o'])
 
 main()
